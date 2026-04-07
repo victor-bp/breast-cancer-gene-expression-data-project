@@ -1,7 +1,7 @@
 # breast cancer type prediction from micro-array gene samples
 # we use a library for reading the csv file because read_csv from the r standard library cant read csv files this large
 library("data.table") 
-data <- fread("Breast_GSE45827.csv")
+data <- fread("Breast_GSE45827.csv") #https://sbcb.inf.ufrgs.br/data/cumida/Genes/Breast/GSE45827/Breast_GSE45827.csv
 
 
 x <- model.matrix(type ~. - 1, data[, 1:500])
