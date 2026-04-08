@@ -163,7 +163,7 @@ lasso.av.predictors
 Reduce(intersect, list(v1 = lasso.cv.predictors, v2=lasso.av.predictors))
 
 
-# let's try doing least squares using only the predictors recovered from lasso with tuning paramter chosen by adaptive validation 
+# let's try doing least squares using only the predictors recovered from lasso with tuning parameter chosen by adaptive validation 
 
 lsquares.lav.fit <- glmnet(x[train, lasso.av.predictors], y$target[train], alpha=0, lambda=0)
 lsquares.lav.pred <- predict(lsquares.lav.fit, s=0, newx=x[test, lasso.av.predictors])
