@@ -2,7 +2,8 @@
 # we use a library for reading the csv file because read_csv from the r standard library cant read csv files this large
 library("data.table") 
 #https://www.kaggle.com/datasets/brunogrisci/breast-cancer-gene-expression-cumida
-data <- fread("D:\\Projects\\uni\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\Breast_GSE45827.csv") #https://sbcb.inf.ufrgs.br/data/cumida/Genes/Breast/GSE45827/Breast_GSE45827.csv
+#data <- fread("D:\\Projects\\uni\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\Breast_GSE45827.csv") #https://sbcb.inf.ufrgs.br/data/cumida/Genes/Breast/GSE45827/Breast_GSE45827.csv
+data <- fread("C:\\Projekter\\notes\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\Breast_GSE45827.csv")
 x <- as.matrix(data[, 3:54677])
 
 # we use z-score normalization to standardize our data 
@@ -19,7 +20,7 @@ y$luminal_A <- ifelse(y$`data$type` == "luminal_A", 1, 0)
 y$luminal_B <- ifelse(y$`data$type` == "luminal_B", 1, 0)
 
 # the basal breast cancer subtype has the most occurrences (and thus makes our dataset the least unbalanced) so we use this as our target variable
-y$target = y$normal
+y$target = y$basal
 
 # we split the data into 80% used for training and 20% used for testing
 set.seed(1)
@@ -50,6 +51,7 @@ library(glmnet)
 # we can then fit on our entire training data
 # df <- data.frame(y=y$target, x)
 # lsquares.fit <- lm(y ~ ., data=df[train])
+set.seed(1)
 lsquares.fit <- glmnet(x[train, ], y$target[train], alpha=0, lambda=0)
 
 # next we will do ridge regression 
@@ -72,7 +74,7 @@ ridge.fit <- glmnet(x[train, ], y$target[train], alpha=0, lambda=ridge.min_lambd
 #  this should give us better support recovery, but for prediction cross validation should perform better
 l <- function (x) max(abs(x[-1, ])) # the maximum norm is used for lasso adaptive validation
                                     #  this is because we are trying to do support recovery and 
-                                    #  because we use the maximum we can capture all "reasonably large predictors"
+                                    #  because we use the maximum norm we can capture all "reasonably large predictors"
                                     #  see fundamentals of high dimensional statistics example 4.4.1 & chapter 7.4
 max_lambda <- l(t(x) %*% y$target)/dim(x)[1] # we choose the maximum lambda to be the smallest lambda 
                                              #  for which all predictors are 0, 
@@ -81,7 +83,7 @@ wide_grid <- 10^seq(-5, log(max_lambda, 10), length=200) # set of potential tuni
 beta_hats <- glmnet(x[train, ], y$target[train], alpha=1, lambda=wide_grid) # compute all betas ahead of time 
 
 r <- max(wide_grid)
-factor <- 3/(4 * dim(x)[1]) # 3/(4n) is a good approximation of the factor for the lasso error bound
+factor <- 3/4#(4 * dim(x)[1]) # 3/(4n) is a good approximation of the factor for the lasso error bound
                             #  according to fundamentals of high dimensional statistics example 4.4.1 (bottom of page 126)
 r_av_found <- FALSE
 r_test <- 0
@@ -109,7 +111,7 @@ while ((r != min(wide_grid)) && (!r_av_found)) {
   r <- max(wide_grid[wide_grid < r])
 }
 r_av <- r
-r_av
+r_av <- r_test
 
 # now that we have our tuning parameter r_av we can fit on all our training data
 lasso.av.fit <- glmnet(x[train, ], y$target[train], alpha=1, lambda=r_av)
@@ -173,8 +175,8 @@ recovered_predictors <- names(data[1, 3:54677])[lasso.av.predictors]
 recovered_predictors
 
 # to find out which genes these probe identifiers correspond to we have to crossreference the annotation table
-gpl <- fread("D:\\Projects\\uni\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\GPL570_limpo.txt") #https://sbcb.inf.ufrgs.br/cumida
-
+#gpl <- fread("D:\\Projects\\uni\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\GPL570_limpo.txt") #https://sbcb.inf.ufrgs.br/cumida
+gpl <- fread("C:\\Projekter\\notes\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\GPL570_limpo.txt.gz")
 genes <- gpl[ID %in% recovered_predictors, c("Gene Symbol", "Gene Title")]
 genes
 # thus we find a correlation between the presence of the genes MOCS2, AKIRIN1 and the presence of basal-subtype breast cancer
