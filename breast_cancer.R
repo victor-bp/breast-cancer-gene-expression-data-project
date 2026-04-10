@@ -1,10 +1,9 @@
 # breast cancer type prediction from micro-array gene samples
 # we use a library for reading the csv file because read_csv from the r standard library cant read csv files this large
+#dataset: https://www.kaggle.com/datasets/brunogrisci/breast-cancer-gene-expression-cumida
 library("data.table") 
-#https://www.kaggle.com/datasets/brunogrisci/breast-cancer-gene-expression-cumida
-#data <- fread("D:\\Projects\\uni\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\Breast_GSE45827.csv") #https://sbcb.inf.ufrgs.br/data/cumida/Genes/Breast/GSE45827/Breast_GSE45827.csv
-data <- fread("C:\\Projekter\\notes\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\Breast_GSE45827.csv")
-x <- as.matrix(data[, 3:54677])
+data <- fread("Breast_GSE45827.csv") # source: https://sbcb.inf.ufrgs.br/data/cumida/Genes/Breast/GSE45827/Breast_GSE45827.csv
+x <- as.matrix(data[, 3:54677]) 
 
 # we use z-score normalization to standardize our data 
 x <- scale(x)
@@ -27,31 +26,9 @@ set.seed(1)
 train <- sample(1:nrow(x), round(nrow(x) * 0.8))
 test <- (-train)
 
-# to start off we do least squares regression as a baseline, we will evaluate it using k-fold cross validation since we have a very low amount of samples 
+# to start off we do least squares regression as a baseline 
 library(glmnet)
-
-# we do 5-fold cross validation to estimate the out-of-sample error
-#k <- 5
-#errors <- numeric(k)
-#for (i in 0:(k-1)) {
-#  current_fold.test <- train[floor(length(train)*i/k+1):floor(length(train)*(i+1)/k)]
-#  current_fold.train <- (-current_fold.test)
-#  least_squares <- lm(y$normal ~ x, subset=current_fold.train)
-#  
-#  current_fold.test.x = x[current_fold.test, ]
-#  current_fold.test.y = y$normal[current_fold.test]
-#  
-#  current_fold.test.pred <- predict(least_squares, newdata = as.data.frame(current_fold.test.x))
-#  error <- mean((current_fold.test.pred[current_fold.test] - current_fold.test.y)^2)
-#  errors[i + 1] <- error 
-#}
-#mean_cve <- mean(errors)
-#print(mean_cve)
-
-# we can then fit on our entire training data
-# df <- data.frame(y=y$target, x)
-# lsquares.fit <- lm(y ~ ., data=df[train])
-set.seed(1)
+set.seed(1) # seed because there is more than one solution when p > n
 lsquares.fit <- glmnet(x[train, ], y$target[train], alpha=0, lambda=0)
 
 # next we will do ridge regression 
@@ -70,54 +47,64 @@ ridge.fit <- glmnet(x[train, ], y$target[train], alpha=0, lambda=ridge.min_lambd
 
 
 # next we will do lasso regression
-#  to select our tuning parameter lambda for the prior l1 norm term we will use adaptive validation 
+#  to select our tuning parameter lambda for the prior l1 norm term we will first try using adaptive validation 
 #  this should give us better support recovery, but for prediction cross validation should perform better
+
 l <- function (x) max(abs(x[-1, ])) # the maximum norm is used for lasso adaptive validation
                                     #  this is because we are trying to do support recovery and 
                                     #  because we use the maximum norm we can capture all "reasonably large predictors"
                                     #  see fundamentals of high dimensional statistics example 4.4.1 & chapter 7.4
+
 max_lambda <- l(t(x) %*% y$target)/dim(x)[1] # we choose the maximum lambda to be the smallest lambda 
-                                             #  for which all predictors are 0, 
+                                             #  for which all predictors are 0 (because the condition is trivially fulfilled for all higher lambdas), 
                                              #  see "A Practical Scheme and Fast Algorithm to Tune the Lasso With Optimality Guarantees" page 3
+
 wide_grid <- 10^seq(-5, log(max_lambda, 10), length=200) # set of potential tuning parameters
+r <- max(wide_grid)
+
 beta_hats <- glmnet(x[train, ], y$target[train], alpha=1, lambda=wide_grid) # compute all betas ahead of time 
 
-r <- max(wide_grid)
-factor <- 3/4#(4 * dim(x)[1]) # 3/(4n) is a good approximation of the factor for the lasso error bound
-                            #  according to fundamentals of high dimensional statistics example 4.4.1 (bottom of page 126)
+
+factor <- 3/4 # 3/(4n) is a good approximation of the factor for the lasso error bound
+              #  according to fundamentals of high dimensional statistics example 4.4.1 (bottom of page 126)
+              #  but since glmnet uses the mean squared error in their loss function we use 3/4 instead, as in 
+              #  the original paper by chichignoud et. al. https://arxiv.org/abs/1410.0247
+r_av <- 0
 r_av_found <- FALSE
 r_test <- 0
 
+# we perform adaptive validation as in algorithm 4.4 from fumdamentals from high dimensional statistics
 while ((r != min(wide_grid)) && (!r_av_found)) {
-  #beta_hat_r <- glmnet(x[train, ], y$target[train], alpha=1, lambda=r)
   beta_hat_r <- coef(beta_hats, s=r)
   r_prime <- max(wide_grid)
   message(sprintf("r: %s\n", r))
   while ((r_prime > r) && (!r_av_found)) {
-    #beta_hat_r_prime <- glmnet(x[train, ], y$target[train], alpha=1, lambda=r_prime)
     beta_hat_r_prime <- coef(beta_hats, s=r_prime)
     
+    # debug
     #message(sprintf("r: %s\n", r))
     #message(sprintf("r_prime: %s\n", r_prime))
     #message(sprintf("l(coef(beta_hat_r_prime) - coef(beta_hat_r)): %s\n", l(beta_hat_r_prime - beta_hat_r)))
     #message(sprintf("factor * r_prime + factor * r: %s\n", factor * r_prime + factor * r))
+    
     if (l(beta_hat_r_prime - beta_hat_r) > factor * r_prime + factor * r) {
-      r <- min(wide_grid[wide_grid > r])
-      r_av_found <- TRUE #exit from both loops
-      r_test <- r
+      r_av_found <- TRUE #exit from both loops 
+      
+      # before we exit we choose the last r for which the condition was still fulfilled
+      r <- min(wide_grid[wide_grid > r]) 
+      r_av <- r 
     }
     r_prime <- max(wide_grid[wide_grid < r_prime])
   }
   r <- max(wide_grid[wide_grid < r])
 }
-r_av <- r
-r_av <- r_test
+r_av
 
 # now that we have our tuning parameter r_av we can fit on all our training data
 lasso.av.fit <- glmnet(x[train, ], y$target[train], alpha=1, lambda=r_av)
 
 
-# let's try doing cross validation too to compare, this should give us better prediction 
+# let's try doing cross validation too to compare, this should give us better prediction than adaptive validation
 set.seed(1)
 wide_grid <- 10^seq(-5, 1, length=200)
 cv.out <- cv.glmnet(x[train, ], y$target[train], nfolds=5, alpha=1, lambda=wide_grid)
@@ -132,6 +119,11 @@ lasso.cv.fit <- glmnet(x[train, ], y$target[train], alpha=1, lambda=lasso.cv.min
 
 # --- prediction ---
 # finally we calculate the out-of-sample error for the different methods on the test set we withheld at the start.
+
+# stationary guess / intercept only
+best_stationary_guess <- length(which(y$target[train] == 1)) / length(y$target[train])
+mean((best_stationary_guess - y$target[test])^2)
+
 # least squares
 lsquares.pred <- predict(lsquares.fit, s=0, newx=x[test, ])
 mean((lsquares.pred - y$target[test])^2)
@@ -175,12 +167,9 @@ recovered_predictors <- names(data[1, 3:54677])[lasso.av.predictors]
 recovered_predictors
 
 # to find out which genes these probe identifiers correspond to we have to crossreference the annotation table
-#gpl <- fread("D:\\Projects\\uni\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\GPL570_limpo.txt") #https://sbcb.inf.ufrgs.br/cumida
-gpl <- fread("C:\\Projekter\\notes\\masters_notes\\2026_spring\\Statistical Inference for High Dimensional\\project\\GPL570_limpo.txt.gz")
+gpl <- fread("GPL570_limpo.txt") # source: https://sbcb.inf.ufrgs.br/data/cumida/Genes/GSEsBruno/GPLs/GPL570_limpo.txt.gz
 genes <- gpl[ID %in% recovered_predictors, c("Gene Symbol", "Gene Title")]
 genes
-# thus we find a correlation between the presence of the genes MOCS2, AKIRIN1 and the presence of basal-subtype breast cancer
-# thus we find a correlation between the presence of the genes SLC34A3 , LOC100505609, CETP and breast cancer
 
 
 
