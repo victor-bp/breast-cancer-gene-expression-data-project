@@ -106,8 +106,6 @@ adaptive_validation <- function(loss, lambda_grid, beta_hats, factor) {
 }
 
 
-
-
 l_max <- function (x) max(abs(x[-1, ]))
 max_lambda <- l_max(t(x) %*% y$target)/dim(x)[1] # we choose the maximum lambda to be the smallest lambda 
                                              #  for which all predictors are 0 (because the condition is trivially fulfilled for all higher lambdas), 
@@ -134,7 +132,6 @@ r.av.lmax <- adaptive_validation(l_max, wide_grid, beta_hats, factor)
 # we also try adaptive validation with the l1 norm as loss to see how this differs
 l1 <-function (x) sum(abs(x[-1, ]))
 r.av.l1 <- adaptive_validation(l1, wide_grid, beta_hats, factor)
-
 
 # now that we have our tuning parameter r_av we can fit on all our training data
 lasso.av.lmax.fit <- glmnet(x[train, ], y$target[train], alpha=1, lambda=r.av.lmax)
@@ -172,7 +169,7 @@ lasso.av.l1.pred <- predict(lasso.av.l1.fit, s=r.av.l1, newx=x[test, ])
 mean((lasso.av.l1.pred - y$target[test])^2)
 
 # --- support recovery ---
-# let's look at our support recovery, which predictors did the different methods find and are these well known predictors?
+# let's look at our support recovery, which predictors did the different methods find?
 
 lsquares.predictors <- which(abs(coef(lsquares.fit)) > 0.03)[-1]
 ridge.predictors <- which(abs(coef(ridge.fit)) > 0.0008)[-1]
@@ -191,12 +188,6 @@ Reduce(intersect, list(v1 = lasso.cv.predictors, v2=lasso.av.lmax.predictors))
 Reduce(intersect, list(v1 = lasso.cv.predictors, v2=lasso.av.lmax.predictors, v3=ridge.predictors))
 Reduce(intersect, list(v1 = lasso.cv.predictors, v2=lasso.av.predictors, v3=lasso.av.lmax.predictors))
 Reduce(intersect, list(v1 = lasso.cv.predictors, v2=lasso.av.predictors, v3=lasso.av.lmax.predictors, v4=ridge.predictors))
-
-# let's try doing least squares using only the predictors recovered from lasso with tuning parameter chosen by adaptive validation 
-
-lsquares.lav.fit <- glmnet(x[train, lasso.av.lmax.predictors], y$target[train], alpha=0, lambda=0)
-lsquares.lav.pred <- predict(lsquares.lav.fit, s=0, newx=x[test, lasso.av.lmax.predictors])
-mean((lsquares.lav.pred - y$target[test])^2)
 
 recovered_predictors <- names(data[1, 3:54677])[lasso.av.lmax.predictors]
 recovered_predictors
